@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: highly-available-k8s-system
+data:
+  POSTGRES_DB: appdb
