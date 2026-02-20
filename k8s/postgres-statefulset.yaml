@@ -2,10 +2,10 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
-  namespace: highly-available-k8s-system
+  namespace: ha-platform
 spec:
   serviceName: postgres
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: postgres
@@ -14,24 +14,68 @@ spec:
       labels:
         app: postgres
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: postgres
+            topologyKey: kubernetes.io/hostname
+
+      initContainers:
+      - name: init-replica
+        image: postgres:15
+        command:
+        - sh
+        - -c
+        - |
+          if [ "$(hostname)" != "postgres-0" ]; then
+            echo "Configuring standby replica..."
+            rm -rf /var/lib/postgresql/data/*
+            pg_basebackup -h postgres-0.postgres -D /var/lib/postgresql/data -U postgres -v -P --wal-method=stream
+          fi
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+
       containers:
-        - name: postgres
-          image: postgres:15
-          ports:
-            - containerPort: 5432
-          envFrom:
-            - configMapRef:
-                name: postgres-config
-            - secretRef:
-                name: postgres-secret
-          volumeMounts:
-            - name: postgres-data
-              mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-    - metadata:
-        name: postgres-data
-      spec:
-        accessModes: ["ReadWriteOnce"]
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
         resources:
           requests:
-            storage: 1Gi
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
