@@ -1,5 +1,5 @@
 # highly-available-k8s-system
-# Highly Available Kubernetes Platform
+# ha-platform
 
 ## Objective
 
